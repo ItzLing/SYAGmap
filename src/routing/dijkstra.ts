@@ -48,32 +48,62 @@ class MinHeap {
   }
 }
 
+export interface Terminal {
+  node: number;
+  /** cost already spent to reach this node from the snapped point (or vice versa) */
+  cost: number;
+}
+
 export interface PathResult {
+  sourceIdx: number;
+  targetIdx: number;
   nodeIds: number[];
   edgeIds: number[];
   cost: number;
 }
 
 /**
- * Dijkstra over the pedestrian graph. `edgeCost` must return a POSITIVE number,
- * or Infinity to forbid the edge. Positive costs keep Dijkstra correct.
+ * Multi-source / multi-target Dijkstra. A snapped start point sits in the middle
+ * of a street segment, so it can leave through either end (two sources); the same
+ * goes for the destination (two targets). `edgeCost` must return a POSITIVE
+ * number, or Infinity to forbid the edge, which keeps Dijkstra correct.
  */
-export function dijkstra(
+export function dijkstraMulti(
   g: Graph,
-  from: number,
-  to: number,
+  sources: Terminal[],
+  targets: Terminal[],
   edgeCost: (edgeId: number) => number,
 ): PathResult | null {
-  const dist = new Array<number>(g.nodes.length).fill(Infinity);
-  const prevEdge = new Array<number>(g.nodes.length).fill(-1);
-  const prevNode = new Array<number>(g.nodes.length).fill(-1);
+  const n = g.nodes.length;
+  const dist = new Array<number>(n).fill(Infinity);
+  const prevEdge = new Array<number>(n).fill(-1);
+  const prevNode = new Array<number>(n).fill(-1);
+  const srcOf = new Array<number>(n).fill(-1);
   const heap = new MinHeap();
-  dist[from] = 0;
-  heap.push(0, from);
+
+  sources.forEach((s, i) => {
+    if (Number.isFinite(s.cost) && s.cost < dist[s.node]) {
+      dist[s.node] = s.cost;
+      srcOf[s.node] = i;
+      heap.push(s.cost, s.node);
+    }
+  });
+  const tgtAt = new Map<number, number>();
+  targets.forEach((t, i) => {
+    if (Number.isFinite(t.cost) && (!tgtAt.has(t.node) || t.cost < targets[tgtAt.get(t.node)!].cost)) tgtAt.set(t.node, i);
+  });
+
+  let best = Infinity;
+  let bestNode = -1;
   while (heap.size) {
     const [d, u] = heap.pop();
     if (d > dist[u]) continue;
-    if (u === to) break;
+    if (d >= best) break;
+    const ti = tgtAt.get(u);
+    if (ti !== undefined && d + targets[ti].cost < best) {
+      best = d + targets[ti].cost;
+      bestNode = u;
+    }
     for (const eid of g.adj[u]) {
       const c = edgeCost(eid);
       if (!Number.isFinite(c)) continue;
@@ -84,18 +114,24 @@ export function dijkstra(
         dist[v] = nd;
         prevEdge[v] = eid;
         prevNode[v] = u;
+        srcOf[v] = -1;
         heap.push(nd, v);
       }
     }
   }
-  if (!Number.isFinite(dist[to])) return null;
-  const nodeIds = [to];
+  if (bestNode < 0) return null;
+
+  const nodeIds = [bestNode];
   const edgeIds: number[] = [];
-  for (let n = to; n !== from; n = prevNode[n]) {
-    edgeIds.push(prevEdge[n]);
-    nodeIds.push(prevNode[n]);
+  let cur = bestNode;
+  while (prevNode[cur] !== -1) {
+    edgeIds.push(prevEdge[cur]);
+    cur = prevNode[cur];
+    nodeIds.push(cur);
   }
   nodeIds.reverse();
   edgeIds.reverse();
-  return { nodeIds, edgeIds, cost: dist[to] };
+  // srcOf[cur] is only set while cur has never been relaxed from another node.
+  const sourceIdx = srcOf[cur] >= 0 ? srcOf[cur] : sources.findIndex((s) => s.node === cur);
+  return { sourceIdx, targetIdx: tgtAt.get(bestNode)!, nodeIds, edgeIds, cost: best };
 }

@@ -17,6 +17,8 @@ export interface Profile {
   tactileMul: number;
   noTactilePenalty: number;
   skybridgeMul: number;
+  /** extra cost for walking on a road with no mapped footpath */
+  exposedPenalty: number;
   /** how strongly reports push the route away */
   reportW: number;
 }
@@ -26,31 +28,31 @@ export const PROFILES: Record<ProfileId, Profile> = {
     id: 'walking', label: 'Walking', hint: 'Standard pedestrian',
     maxSlopePct: 100, blockSteps: false, blockMissingRamp: false,
     slopeW: 0.02, stepPenalty: 0.1, roughPenalty: 0.05, brokenPenalty: 0.3,
-    narrowPenalty: 0, tactileMul: 1, noTactilePenalty: 0, skybridgeMul: 1, reportW: 0.6,
+    narrowPenalty: 0, tactileMul: 1, noTactilePenalty: 0, skybridgeMul: 1, exposedPenalty: 0.15, reportW: 0.6,
   },
   wheelchair: {
     id: 'wheelchair', label: 'Wheelchair', hint: 'No steps, gentle slopes, kerb ramps',
     maxSlopePct: 6, blockSteps: true, blockMissingRamp: true,
     slopeW: 0.15, stepPenalty: 0, roughPenalty: 0.6, brokenPenalty: 2.5,
-    narrowPenalty: 1, tactileMul: 1, noTactilePenalty: 0, skybridgeMul: 0.8, reportW: 1.5,
+    narrowPenalty: 1, tactileMul: 1, noTactilePenalty: 0, skybridgeMul: 0.8, exposedPenalty: 0.9, reportW: 1.5,
   },
   elderly: {
     id: 'elderly', label: 'Elderly', hint: 'Avoid steps and steep slopes',
     maxSlopePct: 8, blockSteps: false, blockMissingRamp: false,
     slopeW: 0.1, stepPenalty: 2, roughPenalty: 0.5, brokenPenalty: 1.5,
-    narrowPenalty: 0.2, tactileMul: 1, noTactilePenalty: 0, skybridgeMul: 0.85, reportW: 1.2,
+    narrowPenalty: 0.2, tactileMul: 1, noTactilePenalty: 0, skybridgeMul: 0.85, exposedPenalty: 0.6, reportW: 1.2,
   },
   stroller: {
     id: 'stroller', label: 'Stroller', hint: 'No steps, smooth surface',
     maxSlopePct: 8, blockSteps: true, blockMissingRamp: false,
     slopeW: 0.1, stepPenalty: 0, roughPenalty: 0.5, brokenPenalty: 2,
-    narrowPenalty: 0.8, tactileMul: 1, noTactilePenalty: 0, skybridgeMul: 0.85, reportW: 1.2,
+    narrowPenalty: 0.8, tactileMul: 1, noTactilePenalty: 0, skybridgeMul: 0.85, exposedPenalty: 0.7, reportW: 1.2,
   },
   visual: {
     id: 'visual', label: 'Visually impaired', hint: 'Prefer tactile paving, avoid obstacles',
     maxSlopePct: 12, blockSteps: false, blockMissingRamp: false,
     slopeW: 0.03, stepPenalty: 1.2, roughPenalty: 0.4, brokenPenalty: 1.5,
-    narrowPenalty: 0.3, tactileMul: 0.7, noTactilePenalty: 0.5, skybridgeMul: 0.9, reportW: 1.6,
+    narrowPenalty: 0.3, tactileMul: 0.7, noTactilePenalty: 0.5, skybridgeMul: 0.9, exposedPenalty: 0.9, reportW: 1.6,
   },
 };
 

@@ -1,0 +1,5 @@
+[
+  { "id": "elmina", "name": "Elmina (demo area)", "center": [101.5101, 3.1814], "radiusM": 600, "zoom": 15.3 },
+  { "id": "bukit-jelutong", "name": "Bukit Jelutong (demo area)", "center": [101.5375, 3.1002], "radiusM": 600, "zoom": 15.3 },
+  { "id": "putra-heights", "name": "Putra Heights (demo area)", "center": [101.5755, 2.9960], "radiusM": 600, "zoom": 15.3 }
+]

@@ -8,18 +8,39 @@ export interface PNode {
   pos: LngLat;
 }
 
-export interface PEdge {
-  id: number;
-  a: number;
-  b: number;
+/** Attributes an admin can set or override on a segment. */
+export interface EdgeAttrs {
   kind: EdgeKind;
-  lengthM: number;
-  slopePct: number;
   surface: Surface;
+  slopePct: number;
   steps: boolean;
   kerbRamp: boolean;
   tactile: boolean;
   narrow: boolean;
+}
+
+export interface PEdge extends EdgeAttrs {
+  id: number;
+  /** stable key: OSM way id + part, or "admin-<doc>-<i>" for admin-drawn paths */
+  key: string;
+  a: number;
+  b: number;
+  /** real street geometry, ordered a -> b */
+  geom: LngLat[];
+  lengthM: number;
+  hw: string;
+  name: string | null;
+  /** road with no sidewalk tagged in OSM: pedestrians share the carriageway */
+  exposed: boolean;
+  covered: boolean;
+  custom: boolean;
+}
+
+export interface GraphMeta {
+  township: string;
+  fetchedAt: string;
+  source: string;
+  stats: Record<string, number>;
 }
 
 export interface Graph {
@@ -27,6 +48,15 @@ export interface Graph {
   edges: PEdge[];
   /** adj[nodeId] = edge ids touching that node */
   adj: number[][];
+  meta: GraphMeta;
+}
+
+/** A point snapped onto the nearest street segment. */
+export interface Snap {
+  edgeId: number;
+  alongM: number;
+  pos: LngLat;
+  distM: number;
 }
 
 export type ReportType = 'blocked' | 'broken_pavement' | 'open_drain' | 'pole' | 'no_ramp' | 'other';
@@ -42,3 +72,8 @@ export interface Report {
 }
 
 export type ProfileId = 'walking' | 'wheelchair' | 'elderly' | 'stroller' | 'visual';
+
+export interface Place {
+  pos: LngLat;
+  name: string;
+}

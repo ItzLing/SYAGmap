@@ -8,9 +8,11 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "postinstall": "node scripts/copy-maplibre.mjs"
+    "postinstall": "node scripts/copy-maplibre.mjs",
+    "fetch-osm": "node scripts/fetch-osm.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.137.0",
     "maplibre-gl": "^6.15.0"
   },
   "devDependencies": {

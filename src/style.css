@@ -7,3 +7,5 @@
 .chip[aria-pressed='true'] { @apply border-red-700 bg-red-700 text-white; }
 .field { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm; }
 .sim-tag { @apply inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800; }
+
+.btn:disabled, .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
