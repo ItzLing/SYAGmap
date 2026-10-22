@@ -3,8 +3,8 @@ import * as maplibregl from 'maplibre-gl';
 import { TOWNSHIPS, MAP_STYLE } from './config';
 import type { EdgeAttrs, LngLat, ProfileId, ReportType } from './types';
 import { buildGraph, fetchRawGraph, type GraphEdit } from './data/graphLoader';
-import { computeRoutes, indexReports, runBatch, snapToGraph, REPORT_LABEL, reportInfluence } from './routing/engine';
-import { buildClusters, rank } from './routing/priorities';
+import { computeRoutes, indexReports, legBetween, runBatch, snapToGraph, REPORT_LABEL, reportInfluence } from './routing/engine';
+import { buildClusters, rank, rulesOnly } from './routing/priorities';
 import { Col, localGet, localSet, type Doc } from './store/db';
 import {
   CarpoolStore, FirstAidStore, ObservationStore, ReportStore, placeName, type Slot,
@@ -141,13 +141,17 @@ function refreshMap() {
 
   if (t === 'carpool') {
     const c = S.carpool.all().find((x) => x.id === S.selCarpool);
-    setData('links', fc(c ? [line([c.start.pos, c.end.pos], { color: '#2563eb' })] : []));
+    const links: GeoJSON.Feature[] = [];
     if (c) {
+      links.push(line(legBetween(g, c.start.pos, c.end.pos, 'drive').coords, { color: '#2563eb' }));
       dyn.add(c.start.pos, pinEl('A', '#16a34a', 32, true));
       dyn.add(c.end.pos, pinEl('B', '#0f172a', 32, true));
     }
-    if (S.cpDraft.start) dyn.add(S.cpDraft.start.pos, pinEl('A', '#16a34a'));
-    if (S.cpDraft.end) dyn.add(S.cpDraft.end.pos, pinEl('B', '#0f172a'));
+    const d = S.cpDraft;
+    if (d.start && d.end) links.push(line(legBetween(g, d.start.pos, d.end.pos, 'drive').coords, { color: '#f59e0b' }));
+    if (d.start) dyn.add(d.start.pos, pinEl('A', '#16a34a'));
+    if (d.end) dyn.add(d.end.pos, pinEl('B', '#0f172a'));
+    setData('links', fc(links));
   }
 
   if (t === 'aid') {
@@ -156,7 +160,10 @@ function refreshMap() {
       // Focus view: where help is needed, who is coming, and where you are.
       setData('helpers', fc([]));
       setData('requests', fc([]));
-      setData('links', fc(sel.responders.map((x) => line([x.pos, sel.pos], { color: '#16a34a' }))));
+      setData('links', fc([
+        line(legBetween(g, S.me, sel.pos, 'walk').coords, { color: '#2563eb' }),
+        ...sel.responders.map((x) => line(legBetween(g, x.pos, sel.pos, 'walk').coords, { color: '#16a34a' })),
+      ]));
       dyn.add(sel.pos, pinEl('!', '#e11d48', 34, true));
       sel.responders.forEach((x, i) => dyn.add(x.pos, pinEl(String(i + 1), '#16a34a', 30)));
     } else {
@@ -346,7 +353,8 @@ map.on('click', (e) => {
     return;
   }
   if (S.pick) {
-    const snapM = S.pick === 'help' ? 0 : S.pick === 'obs' ? 60 : 50;
+    const snapM = S.pick === 'help' ? 0 : S.pick === 'obs' ? 60 : S.pick === 'report' ? 150 : 50;
+    if (S.pick === 'report' && (snapToGraph(S.graph, p)?.distM ?? 999) > 150) { flash('Click closer to a street so the report sits on it.'); return; }
     if (S.pick === 'obs' && (snapToGraph(S.graph, p)?.distM ?? 999) > 60) { flash('Pick a spot on a street, where people walk.'); return; }
     S.pending = { kind: S.pick, pos: snapM ? snappedPos(p, snapM) : p };
     refreshMap();
@@ -369,6 +377,14 @@ map.on('click', (e) => {
   }
 });
 
+/** Keep the Priorities ranking honest when reports or counts change. */
+function onDataChanged() {
+  if (!S.ranking) return;
+  if (S.ranking.source === 'rules') {
+    S.ranking = rulesOnly(buildClusters(S.graph, S.reports.all(), S.obs.footfall(S.graph, true)));
+  } else S.rankingStale = true;
+}
+
 /* ------------------------------------------------------------- confirm flow */
 
 async function confirmPending() {
@@ -379,6 +395,7 @@ async function confirmPending() {
     case 'report':
       await S.reports.add({ pos: p.pos, type: S.reportType, note: S.reportNote });
       S.reportNote = '';
+      onDataChanged();
       recompute(false);
       flash('Report saved. Routes now avoid this spot.');
       return;
@@ -487,13 +504,14 @@ side.addEventListener('click', async (ev) => {
       );
       break;
     case 'batch': S.batch = runBatch(S.graph, S.profile, S.reports.all()); render(); break;
-    case 'clearReports': await S.reports.clearMine(); recompute(false); break;
+    case 'clearReports': await S.reports.clearMine(); onDataChanged(); recompute(false); break;
 
     case 'slot': S.heatSlot = arg as Slot | 'all'; render(); refreshMap(); break;
     case 'obsSubmit':
       if (S.obsDraft.pos) {
         await S.obs.add({ pos: S.obsDraft.pos.pos, count: S.obsDraft.count, slot: S.obsDraft.slot, observer: 'Township observer' });
         S.obsDraft.pos = null;
+        onDataChanged();
         render(); refreshMap();
         flash('Count saved. The heatmap now includes it.');
       }
@@ -502,7 +520,7 @@ side.addEventListener('click', async (ev) => {
     case 'selCp':
       S.selCarpool = S.selCarpool === arg ? null : arg;
       render(); refreshMap();
-      { const c = S.carpool.all().find((x) => x.id === S.selCarpool); if (c) fitTo([c.start.pos, c.end.pos], 16.5); }
+      { const c = S.carpool.all().find((x) => x.id === S.selCarpool); if (c) fitTo(legBetween(S.graph, c.start.pos, c.end.pos, 'drive').coords, 16.5); }
       break;
     case 'join': await S.carpool.join(arg, 'You'); render(); break;
     case 'say': {
@@ -525,7 +543,7 @@ side.addEventListener('click', async (ev) => {
       S.selHelp = S.selHelp === arg ? null : arg;
       render(); refreshMap();
       const r = S.aid.requests.find((x) => x.id === S.selHelp);
-      if (r) fitTo([r.pos, S.me, ...r.responders.map((x) => x.pos)], 16.5);
+      if (r) fitTo([r.pos, S.me, ...r.responders.map((x) => x.pos), ...legBetween(S.graph, S.me, r.pos, 'walk').coords], 16.5);
       break;
     }
     case 'offerHelp':
@@ -540,10 +558,12 @@ side.addEventListener('click', async (ev) => {
       const clusters = buildClusters(S.graph, S.reports.all(), S.obs.footfall(S.graph, true));
       S.ranking = await rank(S.cfg.name, clusters);
       S.ranking_loading = false;
+      S.rankingStale = false;
       render(); refreshMap();
       fitTo(S.ranking.items.slice(0, 10).map((i) => i.cluster.pos), 16.5);
       break;
     }
+    case 'clearRank': S.ranking = null; S.rankingStale = false; popup?.remove(); render(); refreshMap(); break;
     case 'focusPri': {
       const it = S.ranking?.items.find((i) => i.cluster.id === arg);
       if (it) { map.flyTo({ center: it.cluster.pos, zoom: 17.5 }); showPopup(it.cluster.pos, `<b>#${it.rank} ${esc(it.cluster.street)}</b><br>${esc(it.reason)}`); }

@@ -75,6 +75,13 @@ Stack: Vite + TypeScript + Tailwind v4 + MapLibre GL 6, OpenFreeMap tiles. Node 
 
 Run: `npm install`, `npm run dev`, open http://localhost:5173. Check: `npm run typecheck`, `npm run build`.
 
+## Recent fixes (2026-10-22, after user testing)
+- Carpool A-B line and first-aid helper/you-to-patient lines now follow real streets (`legBetween` in `src/routing/engine.ts`); distances shown are by road (carpool) or by street (first aid). Points snap to the largest connected street component, so they never land on an isolated fragment.
+- Reports now always snap onto the nearest street when placed (rejected if over 150 m from any street); the snap tolerance for routing and ranking is 80 m. Before, a report placed away from a street was silently ignored by the ranking.
+- Priorities: shows every problem spot (AI ranks the top 15, the rest follow), tags spots that include your own report, auto-refreshes the rule-based ranking when reports or counts change, marks an AI ranking as stale, and has a "Close ranking" button.
+- `vite.config.ts` had lost the `jsonApi()` plugin in the "(update) Update config" commit, which made the app run offline (no JSON DB, no AI endpoint). The plugin is back; host `127.0.0.1` and port 3000 from that commit are kept. Keep the plugin in any future config edits.
+- Limits: the street network is only the ~1.2 km square downloaded per township, so long detours can appear near its edge (raise `radiusM` in `src/townships.json` and re-run `npm run fetch-osm`). One-way streets are not modelled.
+
 ## Known gaps
 - Untested in a browser: see the list below.
 - No login/roles: Admin and observer tools are open (prototype).

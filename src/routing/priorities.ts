@@ -1,6 +1,6 @@
 import type { Graph, LngLat, Report, ReportType } from '../types';
 import { pointAlong } from '../geo';
-import { REPORT_LABEL, SEVERITY, reportInfluence, snapToGraph } from './engine';
+import { REPORT_LABEL, SEVERITY, SNAP_REPORT_M, reportInfluence, snapToGraph } from './engine';
 import { placeName } from '../store/stores';
 
 export interface Cluster {
@@ -9,6 +9,8 @@ export interface Cluster {
   street: string;
   pos: LngLat;
   reportCount: number;
+  /** true if at least one report in the cluster was made in this app by the user (not simulated) */
+  hasMine: boolean;
   types: Partial<Record<ReportType, number>>;
   newestAgeDays: number;
   /** sum of severity x recency over the cluster's reports */
@@ -22,7 +24,6 @@ export interface Cluster {
 }
 
 const WHEELCHAIR_BLOCKING: ReportType[] = ['blocked', 'no_ramp', 'open_drain', 'pole'];
-const SNAP_M = 40;
 
 /** Group reports by street segment and score them with footfall. Pure and explainable. */
 export function buildClusters(g: Graph, reports: Report[], footfall: Map<number, number>, now = Date.now()): Cluster[] {
@@ -30,7 +31,7 @@ export function buildClusters(g: Graph, reports: Report[], footfall: Map<number,
   const byEdge = new Map<number, Report[]>();
   for (const r of reports) {
     const s = snapToGraph(g, r.pos);
-    if (!s || s.distM > SNAP_M || reportInfluence(r, now) < 0.05) continue;
+    if (!s || s.distM > SNAP_REPORT_M || reportInfluence(r, now) < 0.05) continue;
     byEdge.set(s.edgeId, [...(byEdge.get(s.edgeId) ?? []), r]);
   }
 
@@ -56,7 +57,7 @@ export function buildClusters(g: Graph, reports: Report[], footfall: Map<number,
     const score = severity * (1 + 2 * idx) * (blocking ? 1.3 : 1);
     const typeText = Object.entries(types).map(([t, n]) => `${n}x ${REPORT_LABEL[t as ReportType].toLowerCase()}`).join(', ');
     out.push({
-      id: 'c' + edgeId, edgeId, street: e.name ?? placeName(g, pos), pos, reportCount: rs.length, types,
+      id: 'c' + edgeId, edgeId, street: e.name ?? placeName(g, pos), pos, reportCount: rs.length, hasMine: rs.some((r) => !r.simulated), types,
       newestAgeDays: +newest.toFixed(1), severity: +severity.toFixed(2), footfall: +ff.toFixed(1), footfallIdx: +idx.toFixed(2),
       score: +score.toFixed(2),
       reason: `${typeText}; ${ff > 0 ? `about ${Math.round(ff)} people / 5 min (${Math.round(idx * 100)}% of the busiest counted street)` : 'no footfall count nearby'}${blocking ? '; blocks wheelchair and stroller access' : ''}.`,
@@ -90,9 +91,14 @@ function rulesRanking(clusters: Cluster[], note?: string): Ranking {
 }
 
 /** Ask the server (Claude) to rank the clusters; fall back to the rule-based order. */
+export function rulesOnly(clusters: Cluster[], note?: string): Ranking {
+  return rulesRanking(clusters, clusters.length ? note : 'No reports to rank yet.');
+}
+
 export async function rank(township: string, clusters: Cluster[]): Promise<Ranking> {
   if (clusters.length === 0) return rulesRanking([], 'No reports to rank yet.');
   const top = clusters.slice(0, 15);
+  const rest = clusters.slice(15);
   try {
     const r = await fetch('/api/ai/prioritize', {
       method: 'POST',
@@ -109,7 +115,7 @@ export async function rank(township: string, clusters: Cluster[]): Promise<Ranki
     if (!data.ok) {
       const why = { no_key: 'Claude is not configured (set ANTHROPIC_API_KEY in .env). Showing the rule-based ranking.', refused: 'Claude declined this request. Showing the rule-based ranking.' }[data.reason as string]
         ?? 'Claude returned no usable answer. Showing the rule-based ranking.';
-      return rulesRanking(top, why);
+      return rulesRanking(clusters, why);
     }
     const byId = new Map(top.map((c) => [c.id, c]));
     const items: RankedItem[] = [];
@@ -119,8 +125,10 @@ export async function rank(township: string, clusters: Cluster[]): Promise<Ranki
     }
     for (const c of byId.values()) items.push({ cluster: c, rank: items.length + 1, reason: c.reason });
     items.sort((a, b) => a.rank - b.rank);
+    // Spots beyond the AI's top 15 follow in rule-based order so nothing disappears.
+    for (const c of rest) items.push({ cluster: c, rank: items.length + 1, reason: c.reason });
     return { source: 'claude', model: data.model, summary: data.summary ?? '', items };
   } catch {
-    return rulesRanking(top, 'AI service unreachable. Showing the rule-based ranking.');
+    return rulesRanking(clusters, 'AI service unreachable. Showing the rule-based ranking.');
   }
 }

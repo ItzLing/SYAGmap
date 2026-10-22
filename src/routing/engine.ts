@@ -27,7 +27,8 @@ const HARD_BLOCK: Record<ProfileId, ReportType[]> = {
   visual: ['blocked', 'open_drain', 'pole'],
 };
 
-const SNAP_REPORT_M = 40;
+/** A report this close to a street counts as being on it. Reports are snapped when placed. */
+export const SNAP_REPORT_M = 80;
 
 export interface EdgeReports {
   /** summed influence (decayed, source-weighted, severity-weighted) */
@@ -42,9 +43,10 @@ export function reportInfluence(r: Report, now: number): number {
 }
 
 /** Closest point on the street network. Returns null for an empty graph. */
-export function snapToGraph(g: Graph, p: LngLat): Snap | null {
+export function snapToGraph(g: Graph, p: LngLat, filter?: (e: PEdge) => boolean): Snap | null {
   let best: Snap | null = null;
   for (const e of g.edges) {
+    if (filter && !filter(e)) continue;
     const pr = projectOnPoly(p, e.geom);
     if (!best || pr.distM < best.distM) best = { edgeId: e.id, alongM: pr.alongM, pos: pr.pos, distM: pr.distM };
   }
@@ -199,6 +201,78 @@ function evaluate(
     coords: r.coords, edgeIds: r.edgeIds, lengthM: r.lengthM, barrierEdges,
     exposedShare: totalLen ? exposedLen / totalLen : 0, streets, relaxed,
   };
+}
+
+/* ---------------------------------------------- street-following legs (UI) */
+
+const ROADWAYS = new Set(['living_street', 'residential', 'service', 'unclassified', 'tertiary', 'tertiary_link',
+  'secondary', 'secondary_link', 'primary', 'primary_link', 'trunk', 'trunk_link', 'track']);
+
+export interface Leg {
+  coords: LngLat[];
+  lengthM: number;
+  /** false when no street route was found and a straight line is shown instead */
+  viaStreets: boolean;
+}
+
+const legCache = new WeakMap<Graph, Map<string, Leg>>();
+const mainCache = new WeakMap<Graph, Record<string, Set<number>>>();
+const key5 = (p: LngLat) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`;
+
+/** Edge ids of the largest connected part of the network for a mode (so points never snap to an island). */
+function mainComponent(g: Graph, mode: 'walk' | 'drive'): Set<number> {
+  let byMode = mainCache.get(g);
+  if (!byMode) mainCache.set(g, (byMode = {}));
+  if (byMode[mode]) return byMode[mode];
+  const ok = (e: PEdge) => mode === 'walk' || ROADWAYS.has(e.hw);
+  const comp = new Array<number>(g.nodes.length).fill(-1);
+  const sizes: number[] = [];
+  for (let n = 0; n < g.nodes.length; n++) {
+    if (comp[n] >= 0) continue;
+    const id = sizes.length;
+    let size = 0;
+    const stack = [n];
+    comp[n] = id;
+    while (stack.length) {
+      const u = stack.pop()!;
+      size++;
+      for (const eid of g.adj[u]) {
+        const e = g.edges[eid];
+        if (!ok(e)) continue;
+        const v = e.a === u ? e.b : e.a;
+        if (comp[v] < 0) { comp[v] = id; stack.push(v); }
+      }
+    }
+    sizes.push(size);
+  }
+  const best = sizes.indexOf(Math.max(...sizes));
+  const set = new Set<number>();
+  for (const e of g.edges) if (ok(e) && comp[e.a] === best) set.add(e.id);
+  return (byMode[mode] = set);
+}
+
+/**
+ * Shortest route along real streets between two points. 'walk' may use any
+ * segment (footpaths and roads); 'drive' uses roads only. One-way streets are not
+ * modelled (OSM oneway tags are not downloaded yet), so driving is an approximation.
+ */
+export function legBetween(g: Graph, a: LngLat, b: LngLat, mode: 'walk' | 'drive'): Leg {
+  let cache = legCache.get(g);
+  if (!cache) legCache.set(g, (cache = new Map()));
+  const key = `${mode}|${key5(a)}|${key5(b)}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+
+  const straight: Leg = { coords: [a, b], lengthM: distM(a, b), viaStreets: false };
+  const main = mainComponent(g, mode);
+  const s1 = snapToGraph(g, a, (e) => main.has(e.id)), s2 = snapToGraph(g, b, (e) => main.has(e.id));
+  let leg = straight;
+  if (s1 && s2 && s1.distM < 400 && s2.distM < 400) {
+    const r = route(g, s1, s2, (id) => (main.has(id) ? Math.max(g.edges[id].lengthM, 0.5) : Infinity));
+    if (r) leg = { coords: [a, ...r.coords, b], lengthM: r.lengthM + s1.distM + s2.distM, viaStreets: true };
+  }
+  cache.set(key, leg);
+  return leg;
 }
 
 export interface RouteResult {
