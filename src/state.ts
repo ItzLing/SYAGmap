@@ -59,6 +59,8 @@ export const S = {
 
   ranking: null as Ranking | null,
   ranking_loading: false,
+  /** reports or counts changed since the AI ranking was produced */
+  rankingStale: false,
 
   admin: {
     drawPts: [] as LngLat[],

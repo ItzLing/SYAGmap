@@ -1,7 +1,7 @@
 import { S, type Tab } from '../state';
 import { HELP_TTL_HOURS, TOWNSHIPS } from '../config';
 import { PROFILES, PROFILE_ORDER } from '../routing/profiles';
-import { REPORT_LABEL, reportInfluence } from '../routing/engine';
+import { REPORT_LABEL, legBetween, reportInfluence } from '../routing/engine';
 import type { ReportType } from '../types';
 import { SLOT_LABEL, type Slot } from '../store/stores';
 import { dbOffline } from '../store/db';
@@ -187,7 +187,7 @@ function carpoolPanel(): string {
       ${sel ? `
         <div class="mt-2 space-y-1 border-t border-slate-200 pt-2">
           ${placeLine('A', '#16a34a', c.start.name)}${placeLine('B', '#0f172a', c.end.name)}
-          <p class="text-xs text-slate-500">Distance A to B: ${fmtDist(distM(c.start.pos, c.end.pos))} (straight line). Shown on the map.</p>
+          ${(() => { const l = legBetween(S.graph, c.start.pos, c.end.pos, 'drive'); return `<p class="text-xs text-slate-500">Distance A to B: <b>${fmtDist(l.lengthM)}</b> ${l.viaStreets ? 'by road' : '(straight line, no road route found)'}. Shown on the map. One-way streets are not modelled.</p>`; })()}
           <div class="max-h-24 overflow-y-auto text-xs">${c.messages.map((m) => `<div><b>${esc(m.who)}:</b> ${esc(m.text)}</div>`).join('') || '<i class="text-slate-400">No messages yet</i>'}</div>
           <div class="flex gap-1"><input id="msg-${c.id}" class="field !py-1" maxlength="100" placeholder="Message" aria-label="Chat message">
             <button class="btn !py-1" data-a="say:${c.id}">Send</button>
@@ -224,7 +224,7 @@ function aidPanel(): string {
   const now = Date.now();
   const reqs = S.aid.requests.map((r) => {
     const sel = S.selHelp === r.id;
-    const dMe = distM(S.me, r.pos);
+    const dMe = sel ? legBetween(S.graph, S.me, r.pos, 'walk').lengthM : distM(S.me, r.pos);
     const could = me.registered && me.available && !r.responders.some((x) => x.name === 'You') && r.requester !== 'You';
     return `
     <li class="rounded-lg border ${sel ? 'border-rose-600 ring-1 ring-rose-600' : 'border-rose-200'} bg-rose-50 p-2 text-xs">
@@ -236,8 +236,8 @@ function aidPanel(): string {
       ${sel ? `
         <div class="mt-2 space-y-1 border-t border-rose-200 pt-2">
           ${placeLine('!', '#e11d48', `Help needed: ${r.place}`)}
-          ${placeLine('Y', '#2563eb', `You: ${fmtDist(dMe)} away (simulated location)`)}
-          ${r.responders.map((x, i) => placeLine(String(i + 1), '#16a34a', `${x.name} (${x.skill}): ${fmtDist(distM(x.pos, r.pos))} from the patient`)).join('')}
+          ${placeLine('Y', '#2563eb', `You: ${fmtDist(dMe)} away by street (simulated location)`)}
+          ${r.responders.map((x, i) => placeLine(String(i + 1), '#16a34a', `${x.name} (${x.skill}): ${fmtDist(legBetween(S.graph, x.pos, r.pos, 'walk').lengthM)} from the patient by street`)).join('')}
           ${could ? `<button class="btn-primary mt-1 w-full" data-a="offerHelp:${r.id}">I can help (share my location)</button>`
             : !me.registered ? '<p class="text-slate-500">Register as a helper to offer help.</p>' : !me.available ? '<p class="text-slate-500">Set yourself available to offer help.</p>' : ''}
         </div>` : ''}
@@ -273,18 +273,20 @@ function priorityPanel(): string {
     <li class="rounded-lg border border-slate-200 p-2 text-xs">
       <button class="block w-full text-left" data-a="focusPri:${it.cluster.id}">
         <div class="flex items-center gap-2"><span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-700 text-xs font-bold text-white">${it.rank}</span>
-          <b class="text-sm">${esc(it.cluster.street)}</b><span class="ml-auto text-slate-500">${it.cluster.reportCount} report${it.cluster.reportCount > 1 ? 's' : ''}</span></div>
+          <b class="text-sm">${esc(it.cluster.street)}</b><span class="ml-auto text-slate-500">${it.cluster.reportCount} report${it.cluster.reportCount > 1 ? 's' : ''}${it.cluster.hasMine ? ' · incl. yours' : ''}</span></div>
         <p class="mt-1 text-slate-700">${esc(it.reason)}</p>
         ${it.action ? `<p class="mt-1 font-semibold text-slate-800">Suggested: ${esc(it.action)}</p>` : ''}
       </button></li>`).join('') : '';
   return `
     <div><h2 class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">What should we fix first?</h2>
       <p class="text-xs text-slate-600">Combines user reports (severity, how recent, how many) with township-observer footfall, then asks Claude to rank the problem spots. Only street names, problem types and counts are sent, never personal data.</p>
-      <button class="btn-primary mt-3 w-full" data-a="rank" ${S.ranking_loading ? 'disabled' : ''}>${S.ranking_loading ? 'Ranking…' : rk ? 'Re-rank' : 'Rank problems'}</button></div>
+      <div class="mt-3 grid ${rk ? 'grid-cols-2' : 'grid-cols-1'} gap-2"><button class="btn-primary" data-a="rank" ${S.ranking_loading ? 'disabled' : ''}>${S.ranking_loading ? 'Ranking…' : rk ? 'Re-rank now' : 'Rank problems'}</button>
+        ${rk ? '<button class="btn" data-a="clearRank">Close ranking</button>' : ''}</div></div>
     ${rk ? `
       <section class="rounded-lg bg-slate-50 p-3 text-xs">
         <div class="mb-1"><span class="rounded px-1.5 py-0.5 font-bold ${rk.source === 'claude' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}">${rk.source === 'claude' ? `AI: ${esc(rk.model ?? 'Claude')}` : 'Rule-based'}</span></div>
         ${rk.note ? `<p class="mb-1 text-amber-800">${esc(rk.note)}</p>` : ''}
+        ${S.rankingStale ? '<p class="mb-1 rounded bg-amber-100 p-1.5 font-semibold text-amber-900">Reports changed since this AI ranking. Press Re-rank now.</p>' : ''}
         <p>${esc(rk.summary)}</p></section>
       <ol class="space-y-2">${items || '<li class="text-xs text-slate-400">No reports to rank yet.</li>'}</ol>` : ''}`;
 }
