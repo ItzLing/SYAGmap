@@ -385,7 +385,7 @@ export function renderSide(): string {
     body = { route: routePanel, report: reportPanel, heat: heatPanel, reportHeat: reportHeatPanel, carpool: carpoolPanel, aid: aidPanel, priority: priorityPanel, admin: adminPanel }[S.tab]();
   }
   return `
-    <header class="border-b border-slate-200 px-4 py-3">
+    <header class="shrink-0 border-b border-slate-200 px-4 py-3">
       <div class="flex items-center justify-between gap-2">
         <h1 class="text-lg font-extrabold tracking-tight text-red-700">SYAGmap</h1>
         <span class="sim-tag" title="Reports, counts, carpools and helpers are partly simulated in this prototype">Partly simulated</span>
@@ -396,7 +396,7 @@ export function renderSide(): string {
           ${TOWNSHIPS.map((t) => `<option value="${t.id}" ${t.id === S.cfg.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
         </select></label>
     </header>
-    <div role="tablist" class="flex overflow-x-auto border-b border-slate-200">${TABS.map(([t, l]) => tab(t, l)).join('')}</div>
+    <div role="tablist" class="flex shrink-0 overflow-x-auto border-b border-slate-200">${TABS.map(([t, l]) => tab(t, l)).join('')}</div>
     <div class="flex-1 space-y-4 p-4">${body}</div>
     ${S.toast ? `<div role="status" class="sticky bottom-0 bg-slate-900 px-4 py-2 text-sm text-white">${esc(S.toast)}</div>` : ''}`;
 }
