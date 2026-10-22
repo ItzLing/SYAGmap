@@ -5,7 +5,7 @@ import type { RouteResult, BatchResult } from './routing/engine';
 import type { Ranking } from './routing/priorities';
 import type { ReportStore, ObservationStore, CarpoolStore, FirstAidStore, Slot } from './store/stores';
 
-export type Tab = 'route' | 'report' | 'heat' | 'carpool' | 'aid' | 'priority' | 'admin';
+export type Tab = 'route' | 'report' | 'heat' | 'reportHeat' | 'carpool' | 'aid' | 'priority' | 'admin';
 
 /** What the next map click means. */
 export type PickKind =
@@ -51,6 +51,7 @@ export const S = {
 
   heatSlot: 'all' as Slot | 'all',
   heatIncludeSim: true,
+  reportHeatIncludeSim: true,
   obsDraft: { pos: null as Place | null, slot: 'morning' as Slot, count: 20 },
 
   cpDraft: { start: null as Place | null, end: null as Place | null, seats: 3 },

@@ -3,6 +3,7 @@ import * as maplibregl from 'maplibre-gl';
 import { TOWNSHIPS, MAP_STYLE } from './config';
 import type { EdgeAttrs, LngLat, ProfileId, ReportType } from './types';
 import { buildGraph, fetchRawGraph, type GraphEdit } from './data/graphLoader';
+import { recentHeatReports, reportHeatData, reportsNear, REPORT_INSPECT_M } from './data/reportHeatmap';
 import { computeRoutes, indexReports, legBetween, runBatch, snapToGraph, REPORT_LABEL, reportInfluence } from './routing/engine';
 import { buildClusters, rank, rulesOnly } from './routing/priorities';
 import { Col, localGet, localSet, type Doc } from './store/db';
@@ -38,6 +39,7 @@ const dyn = new MarkerSet(map);
 let meMarker: maplibregl.Marker | null = null;
 let mapReady = false;
 let dataReady = false;
+let reportHeatVersion = '';
 let popup: maplibregl.Popup | null = null;
 
 /* ------------------------------------------------------------------ helpers */
@@ -68,7 +70,7 @@ function render() {
 /* ------------------------------------------------------------- map layers */
 
 function initLayers() {
-  for (const id of ['network', 'shortest', 'syag', 'barriers', 'reports', 'heat', 'helpers', 'requests', 'links', 'draw', 'drawPts']) {
+  for (const id of ['network', 'shortest', 'syag', 'barriers', 'reports', 'heat', 'reportHeat', 'helpers', 'requests', 'links', 'draw', 'drawPts']) {
     map.addSource(id, { type: 'geojson', data: fc([]) });
   }
   map.addLayer({ id: 'network', type: 'line', source: 'network', paint: {
@@ -78,6 +80,11 @@ function initLayers() {
   } });
   map.addLayer({ id: 'heat', type: 'heatmap', source: 'heat', layout: { visibility: 'none' }, paint: {
     'heatmap-weight': ['get', 'w'], 'heatmap-radius': 26, 'heatmap-intensity': 1.1, 'heatmap-opacity': 0.8,
+  } });
+  map.addLayer({ id: 'reportHeat', type: 'heatmap', source: 'reportHeat', layout: { visibility: 'none' }, paint: {
+    'heatmap-weight': ['get', 'weight'], 'heatmap-radius': 36, 'heatmap-intensity': 0.3, 'heatmap-opacity': 0.85,
+    'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'],
+      0, 'rgba(43,131,186,0)', 0.15, '#2b83ba', 0.35, '#abdda4', 0.55, '#ffffbf', 0.75, '#fdae61', 1, '#d7191c'],
   } });
   map.addLayer({ id: 'shortest', type: 'line', source: 'shortest', layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-width': 4, 'line-color': '#475569', 'line-dasharray': [2, 2] } });
@@ -112,6 +119,7 @@ function refreshMap() {
   setVis(['shortest', 'syag-casing', 'syag', 'barriers'], t === 'route');
   setVis(['reports'], t === 'route' || t === 'report' || t === 'priority');
   setVis(['heat'], t === 'heat');
+  setVis(['reportHeat'], t === 'reportHeat');
   setVis(['helpers', 'requests'], t === 'aid');
   setVis(['links'], t === 'aid' || t === 'carpool');
   setVis(['draw', 'drawPts'], t === 'admin');
@@ -138,6 +146,11 @@ function refreshMap() {
     }))));
   }
   if (t === 'heat') setData('heat', S.obs.heat(g, S.heatIncludeSim, S.heatSlot));
+  if (t === 'reportHeat') {
+    const recent = recentHeatReports(S.reports.all(), S.reportHeatIncludeSim, now);
+    reportHeatVersion = JSON.stringify(recent.map((r) => r.id));
+    setData('reportHeat', reportHeatData(recent));
+  }
 
   if (t === 'carpool') {
     const c = S.carpool.all().find((x) => x.id === S.selCarpool);
@@ -362,6 +375,16 @@ map.on('click', (e) => {
   }
 
   // No pick active: popups on features, or quick start/end on the Route tab.
+  if (S.tab === 'reportHeat') {
+    const nearby = reportsNear(recentHeatReports(S.reports.all(), S.reportHeatIncludeSim), p);
+    const counts = new Map<ReportType, number>();
+    for (const r of nearby) counts.set(r.type, (counts.get(r.type) ?? 0) + 1);
+    const simulated = nearby.filter((r) => r.simulated).length;
+    showPopup(p, `<b>${nearby.length} report${nearby.length === 1 ? '' : 's'} within ${REPORT_INSPECT_M} m</b><br>Past 30 days`
+      + [...counts].map(([type, count]) => `<br>${count} × ${esc(REPORT_LABEL[type])}`).join('')
+      + (simulated ? `<br>${simulated} simulated` : ''));
+    return;
+  }
   const layers = S.tab === 'aid' ? ['requests', 'helpers'] : S.tab === 'route' || S.tab === 'report' || S.tab === 'priority' ? ['reports'] : [];
   const hit = layers.length ? map.queryRenderedFeatures(e.point, { layers })[0] : undefined;
   if (hit) {
@@ -610,15 +633,20 @@ side.addEventListener('change', (ev) => {
   if (b === 'township') void loadTownship(el.value);
   else if (b === 'reportType') { S.reportType = el.value as ReportType; renderBanner(); }
   else if (b === 'heatSim') { S.heatIncludeSim = el.checked; refreshMap(); }
+  else if (b === 'reportHeatSim') { S.reportHeatIncludeSim = el.checked; popup?.remove(); render(); refreshMap(); }
   else if (b === 'obsSlot') S.obsDraft.slot = el.value as Slot;
   else if (b === 'helperReg') { S.aid.setMe({ registered: el.checked }); render(); refreshMap(); }
   else if (b === 'helperAvail') { S.aid.setMe({ available: el.checked }); render(); refreshMap(); }
   else if (b.startsWith('adm:')) setAdminAttr(b, el);
 });
 
-/** Expire help requests after 12h and keep countdowns fresh. */
+/** Expire help requests after 12h, refresh countdowns, and age out heatmap reports after 30 days. */
 setInterval(() => {
   if (!dataReady) return;
+  if (S.tab === 'reportHeat'
+    && JSON.stringify(recentHeatReports(S.reports.all(), S.reportHeatIncludeSim).map((r) => r.id)) !== reportHeatVersion) {
+    popup?.remove(); render(); refreshMap();
+  }
   if (S.aid.prune()) { render(); refreshMap(); return; }
   document.querySelectorAll<HTMLElement>('[data-expiry]').forEach((el) => {
     const r = S.aid.requests.find((x) => x.id === el.dataset.expiry);
