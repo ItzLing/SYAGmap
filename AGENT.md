@@ -45,6 +45,7 @@ Stack: Vite + TypeScript + Tailwind v4 + MapLibre GL 6, OpenFreeMap tiles. Node 
 - **Route tab**: SYAGmap route vs shortest route, barrier counts, streets used, share of route on roads with no mapped footpath, simulated-trips Test metric.
 - **Report tab**: place report -> confirm -> saved; influence decays (7-day half-life); reports add cost to a street.
 - **Heatmap tab**: built from township-observer counts (5-minute counts in 3 time slots) snapped to real streets. Seed counts are simulated and flagged; observers can log real counts.
+- **Report Heatmap tab**: separate from the original pedestrian Heatmap. Equal-weight reports from the past 30 days blend into hotter spots where more reports overlap. Includes an independent simulated-report toggle, totals, empty state, and map-click counts by problem type within 50 m. Counts are submissions, not unique people. Priorities ranking is unchanged.
 - **Carpool tab**: ride containers; click one to see A/B on the map; offer a ride by picking start/end on the map.
 - **First Aid tab**: register as helper, availability, request help (confirm step), open requests with 12 h countdown, click a request to see requester / responders / your location, "I can help".
 - **Priorities tab**: clusters reports by street, scores with footfall, asks Claude to rank (server side). Falls back to rule-based ranking without an API key.
@@ -76,6 +77,7 @@ Stack: Vite + TypeScript + Tailwind v4 + MapLibre GL 6, OpenFreeMap tiles. Node 
 Run: `npm install`, `npm run dev`, open http://localhost:5173. Check: `npm run typecheck`, `npm run build`.
 
 ## Recent fixes (2026-10-22, after user testing)
+- Added a separate Report Heatmap without changing the original pedestrian Heatmap or Priorities scoring. Verified the 30-day cutoff, equal weights, simulated-report filtering, empty state, and nearby counts with focused checks. Browser-checked report hotspots, popup problem totals, the independent demo toggle, and the original pedestrian time filter. Production build passes.
 - Carpool A-B line and first-aid helper/you-to-patient lines now follow real streets (`legBetween` in `src/routing/engine.ts`); distances shown are by road (carpool) or by street (first aid). Points snap to the largest connected street component, so they never land on an isolated fragment.
 - Reports now always snap onto the nearest street when placed (rejected if over 150 m from any street); the snap tolerance for routing and ranking is 80 m. Before, a report placed away from a street was silently ignored by the ranking.
 - Priorities: shows every problem spot (AI ranks the top 15, the rest follow), tags spots that include your own report, auto-refreshes the rule-based ranking when reports or counts change, marks an AI ranking as stale, and has a "Close ranking" button.

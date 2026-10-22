@@ -6,6 +6,7 @@ import type { ReportType } from '../types';
 import { SLOT_LABEL, type Slot } from '../store/stores';
 import { dbOffline } from '../store/db';
 import { distM } from '../geo';
+import { recentHeatReports, REPORT_HEAT_DAYS, REPORT_INSPECT_M } from '../data/reportHeatmap';
 
 export const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -134,6 +135,25 @@ function reportPanel(): string {
 }
 
 /* ---------------------------------------------------------------- heatmap */
+
+function reportHeatPanel(): string {
+  const reports = recentHeatReports(S.reports.all(), S.reportHeatIncludeSim);
+  const simulated = reports.filter((r) => r.simulated).length;
+  return `
+    <section class="space-y-3">
+      <h2 class="text-xs font-bold uppercase tracking-wide text-slate-500">Report heatmap</h2>
+      <p class="text-sm text-slate-600">More reports near a spot make it hotter. Use hotspots to see where problems are reported most.</p>
+      <p class="text-xs text-slate-600">Past <b>${REPORT_HEAT_DAYS} days</b> · <b>${reports.length}</b> reports shown (${reports.length - simulated} submitted, ${simulated} simulated).</p>
+      <label class="flex items-center gap-2 text-sm"><input type="checkbox" data-bind="reportHeatSim" ${S.reportHeatIncludeSim ? 'checked' : ''}> Include simulated reports</label>
+      <div>
+        <div class="h-2 rounded" style="background:linear-gradient(90deg,#2b83ba,#abdda4,#ffffbf,#fdae61,#d7191c)"></div>
+        <div class="flex justify-between text-[10px] text-slate-500"><span>fewer reports</span><span>more reports</span></div>
+      </div>
+      ${reports.length ? '' : '<p class="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">No reports in the past 30 days for these settings. Add a problem in the Report tab.</p>'}
+      <p class="text-xs text-slate-500">Each report counts equally. Nearby reports blend at the current zoom. Tap the map for totals and problem types within ${REPORT_INSPECT_M} m.</p>
+      <p class="text-xs text-slate-500">Counts show submissions, not unique people. Simulated reports are demo data.</p>
+    </section>`;
+}
 
 function heatPanel(): string {
   const slots: (Slot | 'all')[] = ['all', 'morning', 'midday', 'evening'];
@@ -352,7 +372,7 @@ function adminPanel(): string {
 /* ------------------------------------------------------------------- shell */
 
 const TABS: [Tab, string][] = [
-  ['route', 'Route'], ['report', 'Report'], ['heat', 'Heatmap'], ['carpool', 'Carpool'], ['aid', 'First Aid'], ['priority', 'Priorities'], ['admin', 'Admin'],
+  ['route', 'Route'], ['report', 'Report'], ['heat', 'Heatmap'], ['reportHeat', 'Report Heatmap'], ['carpool', 'Carpool'], ['aid', 'First Aid'], ['priority', 'Priorities'], ['admin', 'Admin'],
 ];
 
 export function renderSide(): string {
@@ -362,7 +382,7 @@ export function renderSide(): string {
   if (S.loading) body = '<p class="text-sm text-slate-500">Loading street data…</p>';
   else if (S.loadError) body = `<p class="rounded-lg bg-red-50 p-3 text-sm text-red-800">${esc(S.loadError)}</p>`;
   else {
-    body = { route: routePanel, report: reportPanel, heat: heatPanel, carpool: carpoolPanel, aid: aidPanel, priority: priorityPanel, admin: adminPanel }[S.tab]();
+    body = { route: routePanel, report: reportPanel, heat: heatPanel, reportHeat: reportHeatPanel, carpool: carpoolPanel, aid: aidPanel, priority: priorityPanel, admin: adminPanel }[S.tab]();
   }
   return `
     <header class="border-b border-slate-200 px-4 py-3">
