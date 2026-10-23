@@ -23,6 +23,14 @@ Normal maps show roads. They don't show the **steps, steep slopes, missing kerb 
 
 SYAGmap maps the **walking layer** of a township. It finds routes that suit each person, lets residents report problems, and tells township management **what to fix first**.
 
+## 📑 What's Next
+| Extensibility | Description |
+|---|---|
+|Driving Mode|Real-time traffic lights display|
+||Traffic-based computation of red & green light duration |
+|Database|Firebase, MongoDB|
+|PWA|Support mobile app |
+
 ## ✨ Features
 
 | | Feature | What it does |
