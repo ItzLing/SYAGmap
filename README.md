@@ -8,10 +8,14 @@
 
 *Sime Darby Property University Hackathon 2026 · Theme 1: People (Mobility, Accessibility, Safety)*
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-syagmap.vercel.app-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://syagmap.vercel.app/)
+
 ![Status](https://img.shields.io/badge/status-working%20prototype-16a34a)
 ![Maps](https://img.shields.io/badge/maps-OpenStreetMap-7ebc6f)
 ![Frontend](https://img.shields.io/badge/frontend-Vite%20%2B%20TypeScript-646cff)
 ![AI](https://img.shields.io/badge/AI-Claude-c8102e)
+
+👉👉👉 **[Click me to experience SYAGmap](https://syagmap.vercel.app/)** 👈👈👈
 
 </div>
 
@@ -137,6 +141,17 @@ From Monash University Malaysia
 | Dickson Lim Seng Yang | Member |itz.dickson1304@gmail.com|+6012-9995551 |
 | Lo Yi Fan | Member | maybeenoch@gmail.com | +6013-7995668 |
 | Tan Jun Qi | Member | tcolt035@gmail.com | +6013-7699111 | 
+---
+
+## Additional URLs
+|What's in Here|Link|
+|---|---|
+|Live Prototype|https://syagmap.vercel.app/|
+|GitHub|https://github.com/ItzLing/SYAGmap|
+|Presentation Video|https://youtu.be/8jg-aptmTi8|
+|Pitch Deck|https://drive.google.com/file/d/1g1OKxFOkm0q_8uhgVW8kQOSZwKOyGL1i/view?usp=sharing|
+|Demo Video|https://youtu.be/F5IyuNSAtPU|
+|Extensible Idea Proposal|https://drive.google.com/file/d/1_8tCLx8oEMpqpIjDDvkqdKkkEaXPPi25/view?usp=sharing|
 ---
 
 <div align="center">
